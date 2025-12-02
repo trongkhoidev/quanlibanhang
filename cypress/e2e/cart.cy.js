@@ -34,7 +34,21 @@ describe('MODULE: CART – Toàn bộ test case nghiệp vụ giỏ hàng', () =
     cy.get('.header-middle-right-item.open').contains('Giỏ hàng').click();
     cy.get('.cart-item .input-qty').clear().type('0').blur();
     cy.wait(500);
+    // Kiểm tra input không giữ giá trị 0 (tự động reset về 1 hoặc min)
     cy.get('.cart-item .input-qty').should('not.have.value', '0');
+    // Kiểm tra không được phép checkout khi quantity = 0
+    // Theo blackbox test: Expected error message "Vui lòng nhập số lượng" nhưng Actual: "Put on checkout page"
+    // Test này sẽ fail nếu hệ thống cho phép checkout với quantity = 0
+    cy.get('.cart-item .input-qty').then($input => {
+      const value = parseInt($input.val());
+      // Nếu input vẫn là 0 sau khi blur, kiểm tra checkout bị disabled
+      if (value === 0 || value < 1) {
+        cy.get('.thanh-toan').should('have.class', 'disabled');
+      } else {
+        // Nếu input tự động reset về 1, thì checkout button không bị disabled
+        cy.get('.thanh-toan').should('not.have.class', 'disabled');
+      }
+    });
   });
 
   // TC-C-03
@@ -182,22 +196,34 @@ describe('MODULE: CART – Toàn bộ test case nghiệp vụ giỏ hàng', () =
 
   // TC-C-13
   it('TC-C-13 – Total amount updates when product added', () => {
+    // Theo test case trong hình: Product "Rau xào ngũ sắc", Initial Quantity: 3, Reduced Quantity: 2, Price: 200,000 VND
+    // Expected: 400,000 VND, Actual: 600,000 VND (Fail)
+    // Test này thực sự kiểm tra total khi reduce quantity từ 3 xuống 2
+    cy.get('.card-button.order-item').first().click();
+    cy.wait(1000);
+    // Thêm với quantity 3
+    cy.get('.input-qty').clear().type('3');
+    cy.get('.button-dat').click();
+    cy.wait(1000);
     cy.get('.header-middle-right-item.open').contains('Giỏ hàng').click();
-    cy.get('.text-price').invoke('text').then(oldTotalText => {
-      const oldTotal = parseInt(oldTotalText.replace(/[^\d]/g, '')) || 0;
-      cy.get('.cart-close').click();
-      cy.get('.card-button.order-item').first().click();
-      cy.wait(1000);
-      cy.get('.button-dat').click();
-      cy.wait(1000);
-      cy.get('.header-middle-right-item.open').contains('Giỏ hàng').click();
-      cy.get('.text-price').invoke('text').then(newTotalText => {
-        const newTotal = parseInt(newTotalText.replace(/[^\d]/g, '')) || 0;
-        if (oldTotal === 0) {
-          expect(newTotal).to.be.greaterThan(0);
-        } else {
-          expect(newTotal).to.be.greaterThan(oldTotal);
-        }
+    cy.wait(1000);
+    // Lấy giá sản phẩm
+    cy.get('.cart-item-price').first().invoke('attr', 'data-price').then(priceStr => {
+      const price = parseInt(priceStr);
+      // Kiểm tra total ban đầu với quantity 3
+      cy.get('.text-price').invoke('text').then(initialTotalText => {
+        const initialTotal = parseInt(initialTotalText.replace(/[^\d]/g, ''));
+        expect(initialTotal).to.equal(price * 3);
+        // Giảm quantity từ 3 xuống 2
+        cy.get('.cart-item .input-qty').clear().type('2').blur();
+        cy.wait(1000);
+        // Expected: price * 2 = 400,000 (theo test case)
+        const expectedTotal = price * 2;
+        cy.get('.text-price').invoke('text').then(newTotalText => {
+          const newTotal = parseInt(newTotalText.replace(/[^\d]/g, ''));
+          // Kiểm tra total amount = price * quantity (2)
+          expect(newTotal).to.equal(expectedTotal);
+        });
       });
     });
   });
